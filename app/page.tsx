@@ -6,22 +6,32 @@ export default function Home() {
       <header>
         <h1>Agent Readiness Auditor</h1>
         <p>
-          An eve agent that checks whether a website is actually readable by AI
-          agents and crawlers, basically an SEO audit for the growing share of
-          traffic that&apos;s an LLM instead of a person. Give it a domain and
-          it checks three things: whether <code>llms.txt</code> exists (a
-          curated, machine-readable summary of the site for LLMs), whether{" "}
-          <code>AGENTS.md</code> resolves at the root (agent-facing docs for
-          coding and dev tools), and whether <code>robots.txt</code> is
-          quietly blocking AI crawlers like <code>GPTBot</code>,{" "}
-          <code>ClaudeBot</code>, <code>Google-Extended</code>, or{" "}
-          <code>PerplexityBot</code>. It then reports what&apos;s present,
-          what&apos;s missing, and what to fix first.
+          Checks whether a website is actually readable by AI agents and
+          crawlers, basically an SEO audit for the growing share of traffic
+          that&apos;s an LLM instead of a person. Give it a domain and it
+          reports what&apos;s present, what&apos;s missing, and what to fix
+          first.
         </p>
-        <p>
+        <dl className="checks">
+          <div>
+            <dt>llms.txt</dt>
+            <dd>a curated, machine-readable summary of the site for LLMs</dd>
+          </div>
+          <div>
+            <dt>AGENTS.md</dt>
+            <dd>agent-facing docs for coding and dev tools, at the root</dd>
+          </div>
+          <div>
+            <dt>robots.txt</dt>
+            <dd>
+              whether it&apos;s quietly blocking crawlers like GPTBot,
+              ClaudeBot, Google-Extended, or PerplexityBot
+            </dd>
+          </div>
+        </dl>
+        <p className="footnote">
           Built on <a href="https://eve.dev/docs">eve</a>, Vercel&apos;s
-          framework for durable backend AI agents. The agent, its one tool,
-          and this chat UI all ship together as a single deployment.
+          framework for durable backend AI agents.
         </p>
       </header>
       <Chat />
