@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useEveAgent } from "eve/react";
 import type { EveMessagePart } from "eve/react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const EXAMPLES = ["vercel.com", "stripe.com", "anthropic.com"];
 
@@ -26,7 +28,13 @@ function ToolCall({ part }: { part: EveMessagePart & { type: "dynamic-tool" } })
 }
 
 function Part({ part }: { part: EveMessagePart }) {
-  if (part.type === "text") return <>{part.text}</>;
+  if (part.type === "text") {
+    return (
+      <div className="markdown">
+        <Markdown remarkPlugins={[remarkGfm]}>{part.text}</Markdown>
+      </div>
+    );
+  }
   if (part.type === "dynamic-tool") return <ToolCall part={part} />;
   return null;
 }
