@@ -262,6 +262,29 @@ header a:hover {
   margin: 0.35rem 0;
 }
 
+.tool-call summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  user-select: none;
+}
+
+.tool-call summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-call summary::before {
+  content: "▸";
+  font-size: 0.7em;
+  transition: transform 0.15s ease;
+}
+
+.tool-call[open] summary::before {
+  transform: rotate(90deg);
+}
+
 .tool-call pre {
   background: var(--code-bg);
   color: var(--fg);

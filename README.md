@@ -100,7 +100,15 @@ All three tools take a `domain` and return a structured JSON report; the model (
 
 No HTML parsing library is used, just regex, to keep dependencies minimal. It's good enough for real-world pages but will miss edge cases a real parser wouldn't (e.g. attributes split across multiple lines in unusual ways).
 
-`agent/instructions.md` controls report shape, not just tone: one verdict line, then a table per area (AEO, SEO, security headers), then a short paragraph per area on what's working. Gaps get more explanation than passes, so a clean site gets a tight report and a broken one gets a real one, instead of every check getting the same wall of text regardless of whether it matters.
+`agent/instructions.md` controls report shape, not just tone: one verdict line, then per area (AEO, SEO, security headers) a table, a one-line summary, and a bullet per finding. Gaps get a slightly longer bullet than passes, but nothing runs more than a line or two, the report is built to be scanned, not read top to bottom.
+
+## Evals
+
+```bash
+npx eve eval
+```
+
+Runs the two evals under `evals/` against a fresh local instance: `full-audit.eval.ts` sends a real audit request and asserts all three tools got called, `no-tools-for-chitchat.eval.ts` sends a message with no domain in it and asserts none of them fired. These are regression checks, if a future instructions.md or tool change breaks the "always audit, never tool-call on chitchat" behavior, `eve eval` catches it instead of you finding out from a weird transcript.
 
 ## Deploying
 

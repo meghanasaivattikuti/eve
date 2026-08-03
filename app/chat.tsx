@@ -16,14 +16,19 @@ function ToolCall({ part }: { part: EveMessagePart & { type: "dynamic-tool" } })
         ? `${part.toolName} failed`
         : `Running ${part.toolName}…`;
 
+  if (part.state !== "output-available" && part.state !== "output-error") {
+    return <div className="tool-call">{label}</div>;
+  }
+
   return (
-    <div className="tool-call">
-      {label}
+    <details className="tool-call">
+      <summary>{label}</summary>
       {part.state === "output-available" ? (
         <pre>{JSON.stringify(part.output, null, 2)}</pre>
-      ) : null}
-      {part.state === "output-error" ? <pre>{part.errorText}</pre> : null}
-    </div>
+      ) : (
+        <pre>{part.errorText}</pre>
+      )}
+    </details>
   );
 }
 
