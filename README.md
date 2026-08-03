@@ -1,14 +1,14 @@
 # Agent Readiness Auditor
 
-A small [eve](https://eve.dev) agent that audits whether a website is actually readable by AI agents and crawlers - the "AEO" (agent-experience-optimization) equivalent of an SEO audit.
+A small [eve](https://eve.dev) agent that audits a website across three areas: whether it's actually readable by AI agents and crawlers ("AEO"), core SEO fundamentals, and HTTP security headers.
 
 Give it a domain and it checks:
 
-- **`llms.txt`** - is there a machine-readable summary of the site for LLMs?
-- **`AGENTS.md`** - is there agent-facing documentation at the root?
-- **`robots.txt`** - is it blocking known AI crawlers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `PerplexityBot`, `CCBot`, `Bytespider`, etc.)?
+- **Agent readability**: `llms.txt` (a machine-readable summary of the site for LLMs), `AGENTS.md` (agent-facing docs at the root), and whether `robots.txt` is blocking known AI crawlers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `PerplexityBot`, `CCBot`, `Bytespider`, etc.).
+- **SEO**: title, meta description, canonical URL, Open Graph/Twitter tags, structured data (JSON-LD), `sitemap.xml`, and whether the page has meaningful server-rendered content (vs. an empty client-side-rendered shell).
+- **Security headers**: HSTS, Content-Security-Policy, X-Frame-Options, Referrer-Policy, X-Content-Type-Options, Permissions-Policy.
 
-It reports what's present, what's missing, and what to fix first. There's a browser chat UI on top now (not just the CLI), live at https://eve-orcin-six.vercel.app.
+It reports what's present, what's missing, and what to fix first, across all three. Browser chat UI, live at https://eve-virid-eight.vercel.app.
 
 ## What is eve?
 
@@ -32,14 +32,18 @@ agent/
 ├── instructions.md                 # the auditor's persona/system prompt
 ├── channels/
 │   └── eve.ts                      # auth policy - currently none(), open for the demo
+├── lib/
+│   └── http.ts                     # shared fetchText() helper used by all three tools
 └── tools/
-    └── audit_agent_readiness.ts    # the one tool: fetches + parses
-                                     # llms.txt, AGENTS.md, robots.txt
+    ├── audit_agent_readiness.ts    # llms.txt, AGENTS.md, robots.txt AI-crawler rules
+    ├── check_seo.ts                # title/meta/OG tags, JSON-LD, sitemap.xml, render check
+    └── check_security_headers.ts   # HSTS, CSP, X-Frame-Options, etc.
 
 app/                                 # Next.js App Router - the chat UI
 ├── layout.tsx
 ├── page.tsx
-├── chat.tsx                        # client component, uses eve/react's useEveAgent
+├── chat.tsx                        # client component, uses eve/react's useEveAgent,
+                                     # renders markdown responses with react-markdown
 └── globals.css
 
 next.config.ts                       # wraps the Next config with withEve()
@@ -76,7 +80,7 @@ npm run dev
 audit vercel.com
 ```
 
-The agent calls `audit_agent_readiness`, then summarizes what it found. `Ctrl+C` stops the server; restart with `npm run dev` any time you change `agent/agent.ts` (env file changes reload automatically without a restart).
+The agent calls all three tools, then summarizes what it found. `Ctrl+C` stops the server; restart with `npm run dev` any time you change `agent/agent.ts` (env file changes reload automatically without a restart).
 
 ## Testing without the browser
 
@@ -86,15 +90,17 @@ npx eve invoke "audit vercel.com"
 
 Runs one turn against a fresh local instance, no UI, prints the result as JSON. Useful for checking the tool logic without going through the chat UI.
 
-## How the tool works
+## How the tools work
 
-`agent/tools/audit_agent_readiness.ts` takes a `domain`, then in parallel:
+All three tools take a `domain` and return a structured JSON report; the model (guided by `agent/instructions.md`) always calls all three, then turns the combined results into one plain-language report with concrete recommendations.
 
-1. Fetches `/llms.txt` and checks if it exists.
-2. Fetches `/AGENTS.md` and checks if it exists.
-3. Fetches `/robots.txt` and parses it for `Disallow: /` rules scoped to known AI-crawler user-agents.
+- **`audit_agent_readiness.ts`**: fetches `/llms.txt`, `/AGENTS.md`, and `/robots.txt` in parallel, and parses robots.txt for `Disallow: /` rules scoped to known AI-crawler user-agents.
+- **`check_seo.ts`**: fetches the page HTML and `/sitemap.xml`, then regex-extracts `<title>`, meta description, canonical URL, Open Graph/Twitter tags, and JSON-LD structured data blocks. Also estimates visible text length in the raw HTML as a rough server-rendered-vs-empty-shell signal.
+- **`check_security_headers.ts`**: fetches the page and reads response headers directly, no parsing needed.
 
-It returns a structured JSON report; the model (guided by `agent/instructions.md`) turns that into a plain-language summary with concrete recommendations.
+No HTML parsing library is used, just regex, to keep dependencies minimal. It's good enough for real-world pages but will miss edge cases a real parser wouldn't (e.g. attributes split across multiple lines in unusual ways).
+
+`agent/instructions.md` controls report shape, not just tone: one verdict line, then a table per area (AEO, SEO, security headers), then a short paragraph per area on what's working. Gaps get more explanation than passes, so a clean site gets a tight report and a broken one gets a real one, instead of every check getting the same wall of text regardless of whether it matters.
 
 ## Deploying
 

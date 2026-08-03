@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { fetchText } from "#lib/http.js";
 
 const AI_BOT_USER_AGENTS = [
   "GPTBot",
@@ -11,16 +12,6 @@ const AI_BOT_USER_AGENTS = [
   "CCBot",
   "Bytespider",
 ];
-
-async function fetchText(url: string) {
-  try {
-    const res = await fetch(url, { redirect: "follow" });
-    if (!res.ok) return { ok: false, status: res.status, body: null };
-    return { ok: true, status: res.status, body: await res.text() };
-  } catch {
-    return { ok: false, status: null, body: null };
-  }
-}
 
 function parseRobotsBlocking(robotsTxt: string) {
   const lines = robotsTxt.split("\n").map((l) => l.trim());
