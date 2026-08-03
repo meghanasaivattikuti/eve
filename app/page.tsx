@@ -4,7 +4,8 @@ export default function Home() {
   return (
     <main>
       <header>
-        <h1>Agent Readiness Auditor</h1>
+        <h1>CrawlSpace</h1>
+        <p className="tagline">See your site the way a crawler does.</p>
         <p>
           Checks whether a website is actually readable by AI agents, and
           audits the SEO and security fundamentals while it&apos;s at it. Give

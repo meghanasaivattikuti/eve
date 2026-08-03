@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agent Readiness Auditor",
+  title: "CrawlSpace",
   description: "Check whether a website is readable by AI agents and crawlers.",
 };
 
