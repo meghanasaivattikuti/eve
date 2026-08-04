@@ -1,0 +1,21 @@
+# CrawlSpace
+
+> An agent that checks whether a website is actually readable by AI agents and crawlers, and audits core SEO and security header fundamentals while it's at it.
+
+CrawlSpace is a chat-based auditor. Give it a domain (e.g. "audit vercel.com") and it checks three areas:
+
+- Agent readability: whether `llms.txt` and `AGENTS.md` exist, and whether `robots.txt` blocks known AI crawlers (GPTBot, ClaudeBot, Google-Extended, PerplexityBot, CCBot, Bytespider).
+- SEO: title, meta description, canonical URL, Open Graph and Twitter tags, structured data (JSON-LD), sitemap.xml, and whether the page is meaningfully server-rendered.
+- Security headers: HSTS, Content-Security-Policy, X-Frame-Options, Referrer-Policy, X-Content-Type-Options, Permissions-Policy.
+
+It returns a report of what's present, what's missing, and what to fix first.
+
+## Interacting with CrawlSpace
+
+CrawlSpace runs on [eve](https://eve.dev), a framework for durable backend AI agents. The chat interface at the root URL is the primary way to use it: type a message like "audit example.com" and it responds with a full report.
+
+Agents that want to interact programmatically can POST to `/eve/v1/session` per eve's HTTP channel protocol. No authentication is required.
+
+## Source
+
+The full source, including the agent's tools, instructions, and evals, is public: https://github.com/meghanasaivattikuti/eve

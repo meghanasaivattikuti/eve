@@ -1,12 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEveAgent } from "eve/react";
 import type { EveMessagePart } from "eve/react";
+import type { MessageStreamEvent, SessionState } from "eve/client";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const EXAMPLES = ["vercel.com", "stripe.com", "anthropic.com"];
+const STORAGE_KEY = "crawlspace-chat";
+
+type SavedChat = {
+  events?: readonly MessageStreamEvent[];
+  session?: SessionState;
+};
+
+function loadSavedChat(): SavedChat {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as SavedChat) : {};
+  } catch {
+    return {};
+  }
+}
 
 function ToolCall({ part }: { part: EveMessagePart & { type: "dynamic-tool" } }) {
   const label =
@@ -44,10 +60,37 @@ function Part({ part }: { part: EveMessagePart }) {
   return null;
 }
 
-export function Chat() {
-  const agent = useEveAgent();
+type ChatSessionProps = {
+  initialEvents?: readonly MessageStreamEvent[];
+  initialSession?: SessionState;
+};
+
+function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
+  const agent = useEveAgent({
+    initialEvents,
+    initialSession,
+    onFinish(snapshot) {
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ events: snapshot.events, session: snapshot.session }),
+        );
+      } catch {
+        // localStorage unavailable (private browsing, quota, etc.), skip persistence
+      }
+    },
+  });
   const [draft, setDraft] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const lastScrollRef = useRef(0);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
+
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastScrollRef.current < 200) return;
+    lastScrollRef.current = now;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  });
 
   const submit = (text: string) => {
     const trimmed = text.trim();
@@ -86,6 +129,7 @@ export function Chat() {
             {agent.error?.message ?? "The agent hit an error. Check server logs (npx eve logs) or, in production, confirm ANTHROPIC_API_KEY is set on the Vercel project."}
           </div>
         ) : null}
+        <div ref={bottomRef} className="scroll-anchor" />
       </div>
       <div className="composer">
         <form
@@ -107,4 +151,19 @@ export function Chat() {
       </div>
     </>
   );
+}
+
+export function Chat() {
+  const [saved, setSaved] = useState<SavedChat>({});
+
+  useEffect(() => {
+    setSaved(loadSavedChat());
+  }, []);
+
+  // Session config is read once when useEveAgent's store is created, so
+  // ChatSession must remount (via `key`) once the saved session loads from
+  // localStorage after mount, a fresh render with new props isn't enough.
+  const key = saved.session?.sessionId ?? "fresh";
+
+  return <ChatSession key={key} initialEvents={saved.events} initialSession={saved.session} />;
 }

@@ -321,6 +321,10 @@ header a:hover {
   padding: 1.25rem 1.25rem 1.5rem;
 }
 
+.scroll-anchor {
+  scroll-margin-bottom: 6rem;
+}
+
 .composer form {
   max-width: 42rem;
   margin: 0 auto;
