@@ -1,46 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { isRealTextFile, resolveTarget, safeFetch } from "#lib/http.js";
-
-const AI_BOT_USER_AGENTS = [
-  "GPTBot",
-  "ChatGPT-User",
-  "ClaudeBot",
-  "anthropic-ai",
-  "Google-Extended",
-  "PerplexityBot",
-  "CCBot",
-  "Bytespider",
-];
-
-function parseRobotsBlocking(robotsTxt: string) {
-  const blocked = new Set<string>();
-  let currentAgents: string[] = [];
-  let lastWasAgent = false;
-
-  for (const rawLine of robotsTxt.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, "").trim();
-    const idx = line.indexOf(":");
-    if (idx === -1) continue;
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-
-    if (key === "user-agent") {
-      // Consecutive User-agent lines share one rule group.
-      currentAgents = lastWasAgent ? [...currentAgents, value] : [value];
-      lastWasAgent = true;
-      continue;
-    }
-    lastWasAgent = false;
-    if (key === "disallow" && value === "/") {
-      for (const agent of currentAgents) {
-        const match = AI_BOT_USER_AGENTS.find((b) => b.toLowerCase() === agent.toLowerCase());
-        if (match) blocked.add(match);
-      }
-    }
-  }
-  return [...blocked];
-}
+import { AI_BOT_USER_AGENTS, findBlockedAiCrawlers } from "#lib/robots.js";
 
 export default defineTool({
   description:
@@ -62,7 +23,7 @@ export default defineTool({
     ]);
 
     const robotsPresent = isRealTextFile(robots);
-    const blockedBots = robotsPresent ? parseRobotsBlocking(robots.body) : [];
+    const blockedBots = robotsPresent ? findBlockedAiCrawlers(robots.body) : [];
 
     return {
       domain: origin,

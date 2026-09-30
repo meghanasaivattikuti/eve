@@ -153,6 +153,16 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
   const lastMessage = messages[messages.length - 1];
   const hasReplyText = lastMessage?.role === "assistant" && lastMessage.parts.some((part) => part.type === "text");
   const showWorking = isBusy && !hasReplyText;
+  const toolParts =
+    lastMessage?.role === "assistant"
+      ? lastMessage.parts.filter((part) => part.type === "dynamic-tool")
+      : [];
+  const toolsRunning = toolParts.some(
+    (part) => part.state !== "output-available" && part.state !== "output-error",
+  );
+  // The tool pills already show live progress, so only add a line when they can't.
+  const workingLabel =
+    toolParts.length === 0 ? "Starting audit…" : toolsRunning ? null : "Writing your report…";
 
   const submit = (text: string) => {
     const trimmed = text.trim();
@@ -190,10 +200,10 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
             ))}
           </div>
         ))}
-        {showWorking ? (
+        {showWorking && workingLabel ? (
           <div className="working" role="status" aria-live="polite">
             <span className="spinner" aria-hidden="true" />
-            Auditing your site. A full report usually takes 15 to 25 seconds.
+            {workingLabel}
           </div>
         ) : null}
         {agent.status === "error" ? (
@@ -214,7 +224,7 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
             ref={inputRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Enter a domain, e.g. vercel.com"
+            placeholder="Domain, e.g. vercel.com"
             aria-label="Domain to audit"
             autoComplete="off"
             autoCapitalize="off"
@@ -227,8 +237,8 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
           </button>
         </form>
         <p className="composer-hint">
-          Type <kbd>clear</kbd> or <kbd>/clear</kbd> to start a fresh chat. Your conversation is saved in this
-          browser.
+          Type <kbd>clear</kbd> or <kbd>/clear</kbd> to start a fresh chat.
+          <span className="hint-extra"> Your conversation is saved in this browser.</span>
           {messages.length > 0 ? (
             <>
               {" "}

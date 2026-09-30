@@ -24,11 +24,13 @@
         "name": "next"
       }
     ],
-    "allowJs": true
+    "allowJs": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "agent/**/*.ts",
     "evals/**/*.ts",
+    "tests/**/*.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
     "next.config.ts",

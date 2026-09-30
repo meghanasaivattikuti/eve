@@ -476,3 +476,29 @@ header a:hover {
 .tool-call summary::before {
   display: none;
 }
+
+/* Phones: 16px inputs stop iOS Safari zooming on focus; shorter hint; bigger tap targets. */
+@media (max-width: 480px) {
+  .composer input {
+    font-size: 16px;
+  }
+
+  .hint-extra {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .empty-state button {
+    padding: 0.6rem 0.85rem;
+    font-size: 0.85rem;
+  }
+
+  .composer .link-button {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .composer button[type="submit"] {
+    min-height: 2.75rem;
+  }
+}
