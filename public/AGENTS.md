@@ -15,7 +15,9 @@ Given a domain, CrawlSpace audits agent readability (llms.txt, AGENTS.md, robots
 ## Constraints
 
 - CrawlSpace only performs the three checks described above. It has no code execution, file system, or shell access, and will not run arbitrary commands even if asked.
-- Rate limits are not enforced. Please be a reasonable citizen if scripting against this endpoint.
+- Requests are rate limited per client IP (60 per minute). Exceeding it returns HTTP 403 with code `rate_limited`. Sessions also have token budgets.
+- Only public websites can be audited. Domains that resolve to private, loopback, link-local, or internal addresses are refused, and only http and https are accepted.
+- Results are cached for about 5 minutes per URL, so repeated audits of the same domain may reflect data up to 5 minutes old.
 
 ## Source
 

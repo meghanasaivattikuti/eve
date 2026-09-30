@@ -9,6 +9,15 @@ import remarkGfm from "remark-gfm";
 
 const EXAMPLES = ["vercel.com", "stripe.com", "anthropic.com"];
 const STORAGE_KEY = "crawlspace-chat";
+const SCROLL_THROTTLE_MS = 200;
+const MAX_TOOL_OUTPUT_CHARS = 20_000;
+
+function formatToolOutput(output: unknown): string {
+  const text = JSON.stringify(output, null, 2) ?? "";
+  return text.length > MAX_TOOL_OUTPUT_CHARS
+    ? `${text.slice(0, MAX_TOOL_OUTPUT_CHARS)}\n… (truncated ${text.length - MAX_TOOL_OUTPUT_CHARS} characters)`
+    : text;
+}
 
 type SavedChat = {
   events?: readonly MessageStreamEvent[];
@@ -40,9 +49,9 @@ function ToolCall({ part }: { part: EveMessagePart & { type: "dynamic-tool" } })
     <details className="tool-call">
       <summary>{label}</summary>
       {part.state === "output-available" ? (
-        <pre>{JSON.stringify(part.output, null, 2)}</pre>
+        <pre>{formatToolOutput(part.output)}</pre>
       ) : (
-        <pre>{part.errorText}</pre>
+        <pre>{part.errorText.slice(0, MAX_TOOL_OUTPUT_CHARS)}</pre>
       )}
     </details>
   );
@@ -83,14 +92,24 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastScrollRef = useRef(0);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
 
+  // Throttled so each smooth-scroll animation can finish, but with a trailing call:
+  // a render that lands inside the throttle window schedules a scroll for when it
+  // expires, so the last chunk of a streamed report always ends up in view.
   useEffect(() => {
-    const now = Date.now();
-    if (now - lastScrollRef.current < 200) return;
-    lastScrollRef.current = now;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const scroll = () => {
+      lastScrollRef.current = Date.now();
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    };
+    clearTimeout(scrollTimerRef.current);
+    const wait = SCROLL_THROTTLE_MS - (Date.now() - lastScrollRef.current);
+    if (wait <= 0) scroll();
+    else scrollTimerRef.current = setTimeout(scroll, wait);
   });
+
+  useEffect(() => () => clearTimeout(scrollTimerRef.current), []);
 
   const submit = (text: string) => {
     const trimmed = text.trim();

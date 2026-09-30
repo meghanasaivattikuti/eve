@@ -307,7 +307,8 @@ header a:hover {
   font-weight: 400;
   border-radius: 0.375rem;
   padding: 0.5rem;
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 20rem;
   margin: 0.35rem 0 0;
   font-size: 0.75rem;
 }

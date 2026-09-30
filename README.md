@@ -31,9 +31,10 @@ agent/
 ├── agent.ts                        # model config
 ├── instructions.md                 # the auditor's persona/system prompt
 ├── channels/
-│   └── eve.ts                      # auth policy - currently none(), open for the demo
+│   └── eve.ts                      # anonymous access, rate limited per IP first
 ├── lib/
-│   └── http.ts                     # shared fetchText() helper used by all three tools
+│   ├── http.ts                     # safeFetch(): SSRF guard, timeout/size caps, cache, soft-404 checks
+│   └── rate-limit.ts               # in-memory fixed-window limiter used by the channel
 └── tools/
     ├── audit_agent_readiness.ts    # llms.txt, AGENTS.md, robots.txt AI-crawler rules
     ├── check_seo.ts                # title/meta/OG tags, JSON-LD, sitemap.xml, render check
@@ -60,13 +61,27 @@ next.config.ts                       # wraps the Next config with withEve(), als
                                       # security response headers
 ```
 
-`agent/channels/eve.ts` uses `none()` for auth, meaning anyone with the link can use it, no login required. That's intentional for a public demo and should not stay that way if this ever does anything beyond serving a read-only audit tool.
+`agent/channels/eve.ts` uses `none()` for auth, meaning anyone with the link can use it, no login required. That's intentional for a public demo and should not stay that way if this ever does anything beyond serving a read-only audit tool. Because it is open, three guards sit in front of the model and the network:
+
+- **Rate limiting**: a custom `AuthFn` runs before `none()` and allows 60 requests per minute per client IP (`x-forwarded-for` / `x-real-ip`), throwing a 403 `rate_limited` error past that. Counters live in instance memory, so on serverless the limit is per warm instance, not global. Move `lib/rate-limit.ts` to Redis for a strict global cap.
+- **Token budgets**: `agent/agent.ts` sets `maxInputTokensPerSession` (150k) and `maxOutputTokensPerSession` (20k).
+- **SSRF protection**: every URL a tool fetches goes through `lib/http.ts`. It allows only http/https, rejects embedded credentials, resolves DNS and blocks private, loopback, link-local, CGNAT, multicast, IPv4-mapped/NAT64/6to4 IPv6 addresses, and re-validates every redirect hop (redirects are followed manually). Known gap: DNS is resolved once for the check and again by `fetch`, so a hostile DNS server could rebind between the two.
+
+### Fetching and caching
+
+All three tools share `safeFetch()` in `agent/lib/http.ts`:
+
+- 8s timeout, 1 MB body cap, 5 redirect max, and an identifying `CrawlSpaceBot/1.0` User-Agent.
+- Results (including failures) are cached per URL for 5 minutes (max 500 entries), and concurrent requests for the same URL share one in-flight fetch. The homepage is therefore fetched once per audit even though the SEO and security-headers tools both need it. The cache is per instance.
+- Soft-404 defense: `llms.txt`, `AGENTS.md` and `robots.txt` only count as present if the response is not HTML and is non-empty; `sitemap.xml` must contain `<urlset>` or `<sitemapindex>`.
+- Malformed or disallowed domains return `reachable: false` with an `error` string instead of throwing.
 
 ## The chat UI
 
 `app/chat.tsx` handles two things beyond the basic send/receive loop:
 
-- **Autoscroll**: an effect calls `scrollIntoView` on a bottom sentinel as messages stream in, throttled to roughly once every 200ms so each smooth-scroll animation actually finishes instead of being restarted on every token and looking like a jumpy snap to the bottom.
+- **Autoscroll**: an effect calls `scrollIntoView` on a bottom sentinel as messages stream in, throttled to roughly once every 200ms so each smooth-scroll animation actually finishes instead of being restarted on every token and looking like a jumpy snap to the bottom. A render inside the throttle window schedules a trailing scroll for when it expires, so the final chunk of a streamed report is never left off-screen.
+- **Tool output display**: expanded tool results are truncated to 20,000 characters and shown in a scrollable box capped at 20rem tall.
 - **Resumable sessions across a page refresh**: eve sessions are durable on the server already, a conversation survives fine on its own. The gap was that the browser had no memory of *which* session it had been using, so a refresh always started fresh. The fix follows eve's own documented "resumable sessions" pattern (`guides/frontend/overview`): after every turn, `onFinish` saves `session` (`sessionId`, `continuationToken`, `streamIndex`) and the rendered `events` log to `localStorage`. On mount, that gets read back and handed to `useEveAgent` as `initialSession`/`initialEvents`. The one adaptation from the docs' literal sample: reading `localStorage` can't happen in the same render that produces the server-rendered HTML (Next.js client components still render once on the server first), so loading happens in a `useEffect` instead, and the chat component remounts via a `key` once the saved session is available, since `useEveAgent`'s session config is only read once, when its internal store is created.
 
 ## Prerequisites
@@ -148,18 +163,20 @@ Links the Vercel project if it isn't already, runs `vercel deploy --prod`, and p
 ```ts
 export default defineAgent({
   model: "anthropic/claude-sonnet-5",
+  limits: { maxInputTokensPerSession: 150_000, maxOutputTokensPerSession: 20_000 },
 });
 ```
 
 A plain string model id always routes through Vercel's AI Gateway, authenticating via the linked Vercel project's OIDC token automatically (no manual key needed, locally or in production), as long as the project is linked (`eve link`, or any `eve deploy`). One real caveat: **AI Gateway requires a credit card on file for the Vercel team**, even to use the free credits. Without one, requests fail with a billing error, not an auth error, until a card is added at the Vercel AI settings page.
 
-To use a direct Anthropic key instead (no Vercel billing requirement, but the key itself must be kept secret and rate-limited care is now on you):
+To use a direct Anthropic key instead (no Vercel billing requirement, but the key itself must be kept secret and rate-limited care is now on you), first run `npm install @ai-sdk/anthropic`:
 
 ```ts
 import { anthropic } from "@ai-sdk/anthropic";
 
 export default defineAgent({
   model: anthropic("claude-sonnet-5"),
+  limits: { maxInputTokensPerSession: 150_000, maxOutputTokensPerSession: 20_000 },
 });
 ```
 

@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { fetchText } from "#lib/http.js";
+import { isRealTextFile, resolveTarget, safeFetch } from "#lib/http.js";
 
 const AI_BOT_USER_AGENTS = [
   "GPTBot",
@@ -14,27 +14,32 @@ const AI_BOT_USER_AGENTS = [
 ];
 
 function parseRobotsBlocking(robotsTxt: string) {
-  const lines = robotsTxt.split("\n").map((l) => l.trim());
-  const blocked: string[] = [];
+  const blocked = new Set<string>();
   let currentAgents: string[] = [];
+  let lastWasAgent = false;
 
-  for (const line of lines) {
-    const [rawKey, ...rest] = line.split(":");
-    if (!rawKey || rest.length === 0) continue;
-    const key = rawKey.trim().toLowerCase();
-    const value = rest.join(":").trim();
+  for (const rawLine of robotsTxt.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    const idx = line.indexOf(":");
+    if (idx === -1) continue;
+    const key = line.slice(0, idx).trim().toLowerCase();
+    const value = line.slice(idx + 1).trim();
 
     if (key === "user-agent") {
-      currentAgents = [value];
-    } else if (key === "disallow" && value === "/") {
+      // Consecutive User-agent lines share one rule group.
+      currentAgents = lastWasAgent ? [...currentAgents, value] : [value];
+      lastWasAgent = true;
+      continue;
+    }
+    lastWasAgent = false;
+    if (key === "disallow" && value === "/") {
       for (const agent of currentAgents) {
-        if (AI_BOT_USER_AGENTS.some((b) => b.toLowerCase() === agent.toLowerCase())) {
-          blocked.push(agent);
-        }
+        const match = AI_BOT_USER_AGENTS.find((b) => b.toLowerCase() === agent.toLowerCase());
+        if (match) blocked.add(match);
       }
     }
   }
-  return blocked;
+  return [...blocked];
 }
 
 export default defineTool({
@@ -44,23 +49,27 @@ export default defineTool({
     domain: z.string().min(1).describe("Domain or URL, e.g. example.com"),
   }),
   async execute({ domain }) {
-    const base = domain.startsWith("http") ? domain : `https://${domain}`;
-    const origin = new URL(base).origin;
+    const target = await resolveTarget(domain);
+    if (!target.ok) {
+      return { domain, reachable: false, error: `Invalid or disallowed domain: ${target.error}` };
+    }
+    const { origin } = target;
 
     const [llms, agentsMd, robots] = await Promise.all([
-      fetchText(`${origin}/llms.txt`),
-      fetchText(`${origin}/AGENTS.md`),
-      fetchText(`${origin}/robots.txt`),
+      safeFetch(`${origin}/llms.txt`),
+      safeFetch(`${origin}/AGENTS.md`),
+      safeFetch(`${origin}/robots.txt`),
     ]);
 
-    const blockedBots = robots.ok && robots.body ? parseRobotsBlocking(robots.body) : [];
+    const robotsPresent = isRealTextFile(robots);
+    const blockedBots = robotsPresent ? parseRobotsBlocking(robots.body) : [];
 
     return {
       domain: origin,
-      llms_txt: { present: llms.ok, url: `${origin}/llms.txt` },
-      agents_md: { present: agentsMd.ok, url: `${origin}/AGENTS.md` },
+      llms_txt: { present: isRealTextFile(llms), url: `${origin}/llms.txt` },
+      agents_md: { present: isRealTextFile(agentsMd), url: `${origin}/AGENTS.md` },
       robots_txt: {
-        present: robots.ok,
+        present: robotsPresent,
         blocked_ai_crawlers: blockedBots,
         checked_user_agents: AI_BOT_USER_AGENTS,
       },

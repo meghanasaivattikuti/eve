@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { fetchText } from "#lib/http.js";
+import { isRealSitemap, looksLikeHtml, resolveTarget, safeFetch } from "#lib/http.js";
 
 function extractTag(html: string, regex: RegExp): string | null {
   const match = html.match(regex);
@@ -61,16 +61,22 @@ export default defineTool({
     domain: z.string().min(1).describe("Domain or URL, e.g. example.com"),
   }),
   async execute({ domain }) {
-    const base = domain.startsWith("http") ? domain : `https://${domain}`;
-    const origin = new URL(base).origin;
+    const target = await resolveTarget(domain);
+    if (!target.ok) {
+      return { domain, reachable: false, error: `Invalid or disallowed domain: ${target.error}` };
+    }
+    const { origin } = target;
 
     const [page, sitemap] = await Promise.all([
-      fetchText(origin),
-      fetchText(`${origin}/sitemap.xml`),
+      safeFetch(origin),
+      safeFetch(`${origin}/sitemap.xml`),
     ]);
 
     if (!page.ok) {
-      return { domain: origin, reachable: false };
+      return { domain: origin, reachable: false, error: page.error };
+    }
+    if (!looksLikeHtml(page)) {
+      return { domain: origin, reachable: true, error: "Homepage did not return HTML" };
     }
 
     const html = page.body;
@@ -93,7 +99,7 @@ export default defineTool({
         present: jsonLdTypes.length > 0,
         types: jsonLdTypes,
       },
-      sitemap_xml: { present: sitemap.ok, url: `${origin}/sitemap.xml` },
+      sitemap_xml: { present: isRealSitemap(sitemap), url: `${origin}/sitemap.xml` },
       server_rendered_content: {
         likely: visibleTextLength > 200,
         visible_text_length: visibleTextLength,

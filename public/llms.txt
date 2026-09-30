@@ -14,7 +14,7 @@ It returns a report of what's present, what's missing, and what to fix first.
 
 CrawlSpace runs on [eve](https://eve.dev), a framework for durable backend AI agents. The chat interface at the root URL is the primary way to use it: type a message like "audit example.com" and it responds with a full report.
 
-Agents that want to interact programmatically can POST to `/eve/v1/session` per eve's HTTP channel protocol. No authentication is required.
+Agents that want to interact programmatically can POST to `/eve/v1/session` per eve's HTTP channel protocol. No authentication is required, but requests are rate limited per IP and only public websites can be audited.
 
 ## Source
 

@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { resolveTarget, safeFetch } from "#lib/http.js";
 
 const SECURITY_HEADERS = [
   {
@@ -41,18 +42,23 @@ export default defineTool({
     domain: z.string().min(1).describe("Domain or URL, e.g. example.com"),
   }),
   async execute({ domain }) {
-    const base = domain.startsWith("http") ? domain : `https://${domain}`;
-    const origin = new URL(base).origin;
-
-    let headers: Headers;
-    let status: number;
-    try {
-      const res = await fetch(origin, { redirect: "follow" });
-      headers = res.headers;
-      status = res.status;
-    } catch {
-      return { domain: origin, reachable: false, headers: [] };
+    const target = await resolveTarget(domain);
+    if (!target.ok) {
+      return {
+        domain,
+        reachable: false,
+        error: `Invalid or disallowed domain: ${target.error}`,
+        headers: [],
+      };
     }
+    const { origin } = target;
+
+    // Same URL the SEO tool fetches, so the cache/in-flight dedupe serves both.
+    const page = await safeFetch(origin);
+    if (!page.ok) {
+      return { domain: origin, reachable: false, error: page.error, headers: [] };
+    }
+    const { headers, status } = page;
 
     return {
       domain: origin,

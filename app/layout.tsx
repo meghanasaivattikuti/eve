@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { SITE_URL } from "./site";
 import "./globals.css";
 
-const SITE_URL = "https://eve-virid-eight.vercel.app";
 const DESCRIPTION = "Check whether a website is readable by AI agents and crawlers, and audit its SEO and security header fundamentals.";
 
 export const metadata: Metadata = {
