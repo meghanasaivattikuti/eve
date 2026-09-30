@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm";
 const EXAMPLES = ["vercel.com", "stripe.com", "anthropic.com"];
 const STORAGE_KEY = "crawlspace-chat";
 const SCROLL_THROTTLE_MS = 200;
+const STALL_AFTER_MS = 30_000;
 const MAX_TOOL_OUTPUT_CHARS = 20_000;
 
 function formatToolOutput(output: unknown): string {
@@ -107,10 +108,14 @@ function isClearCommand(text: string): boolean {
 }
 
 function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProps) {
+  // Set once this chat is cleared or unmounted so a turn that settles late
+  // can't write the discarded conversation back into localStorage.
+  const disposedRef = useRef(false);
   const agent = useEveAgent({
     initialEvents,
     initialSession,
     onFinish(snapshot) {
+      if (disposedRef.current) return;
       try {
         window.localStorage.setItem(
           STORAGE_KEY,
@@ -122,6 +127,7 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
     },
   });
   const [draft, setDraft] = useState("");
+  const [stalled, setStalled] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastScrollRef = useRef(0);
@@ -143,6 +149,37 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
   });
 
   useEffect(() => () => clearTimeout(scrollTimerRef.current), []);
+
+  useEffect(() => {
+    disposedRef.current = false;
+    return () => {
+      disposedRef.current = true;
+    };
+  }, []);
+
+  // Watchdog: if a turn is in flight but no new stream events arrive for a while,
+  // stop trapping the user behind a disabled input and offer a way out.
+  useEffect(() => {
+    setStalled(false);
+    if (!isBusy) return;
+    const timer = setTimeout(() => {
+      // Left in on purpose: if a stream ever stalls, this line in the browser console
+      // shows whether the final event arrived, which is what we need to diagnose it.
+      console.warn("[crawlspace] stream stalled", {
+        status: agent.status,
+        events: agent.events.length,
+        lastEvent: agent.events[agent.events.length - 1]?.type,
+      });
+      setStalled(true);
+    }, STALL_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [isBusy, agent.events.length]);
+
+  const clearChat = () => {
+    disposedRef.current = true;
+    agent.stop();
+    onClear();
+  };
 
   // Keep the cursor in the box: on load, and again when a report finishes.
   useEffect(() => {
@@ -168,7 +205,7 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
     const trimmed = text.trim();
     if (trimmed.length === 0 || isBusy) return;
     if (isClearCommand(trimmed)) {
-      onClear();
+      clearChat();
       return;
     }
     void agent.send({ message: trimmed });
@@ -204,6 +241,17 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
           <div className="working" role="status" aria-live="polite">
             <span className="spinner" aria-hidden="true" />
             {workingLabel}
+          </div>
+        ) : null}
+        {stalled ? (
+          <div className="working stalled" role="alert">
+            Taking longer than expected.
+            <button type="button" className="link-button" onClick={() => agent.stop()}>
+              Stop waiting
+            </button>
+            <button type="button" className="link-button" onClick={clearChat}>
+              Start over
+            </button>
           </div>
         ) : null}
         {agent.status === "error" ? (
@@ -242,7 +290,7 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
           {messages.length > 0 ? (
             <>
               {" "}
-              <button type="button" className="link-button" onClick={onClear} disabled={isBusy}>
+              <button type="button" className="link-button" onClick={clearChat}>
                 Clear chat
               </button>
             </>

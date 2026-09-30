@@ -380,6 +380,7 @@ header a:hover {
   text-align: center;
 }
 
+.link-button,
 .composer .link-button {
   background: none;
   border: none;
@@ -501,4 +502,13 @@ header a:hover {
   .composer button[type="submit"] {
     min-height: 2.75rem;
   }
+}
+
+.working.stalled {
+  flex-wrap: wrap;
+  color: var(--fg);
+}
+
+.working.stalled .link-button {
+  font-size: 0.85rem;
 }
