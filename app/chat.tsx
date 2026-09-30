@@ -203,7 +203,11 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
 
   const submit = (text: string) => {
     const trimmed = text.trim();
-    if (trimmed.length === 0 || isBusy) return;
+    if (isBusy) return;
+    if (trimmed.length === 0) {
+      inputRef.current?.focus();
+      return;
+    }
     if (isClearCommand(trimmed)) {
       clearChat();
       return;
@@ -280,7 +284,7 @@ function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProp
             spellCheck={false}
             disabled={isBusy}
           />
-          <button type="submit" disabled={isBusy || draft.trim().length === 0}>
+          <button type="submit" disabled={isBusy}>
             {isBusy ? "Auditing…" : "Audit"}
           </button>
         </form>
