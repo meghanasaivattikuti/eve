@@ -33,21 +33,47 @@ function loadSavedChat(): SavedChat {
   }
 }
 
+const TOOL_LABELS: Record<string, { running: string; done: string; failed: string }> = {
+  audit_agent_readiness: {
+    running: "Checking agent readability (llms.txt, AGENTS.md, robots.txt)…",
+    done: "Checked agent readability",
+    failed: "Agent readability check failed",
+  },
+  check_seo: {
+    running: "Checking SEO (title, meta tags, structured data, sitemap)…",
+    done: "Checked SEO",
+    failed: "SEO check failed",
+  },
+  check_security_headers: {
+    running: "Checking security headers…",
+    done: "Checked security headers",
+    failed: "Security headers check failed",
+  },
+};
+
 function ToolCall({ part }: { part: EveMessagePart & { type: "dynamic-tool" } }) {
-  const label =
-    part.state === "output-available"
-      ? `Ran ${part.toolName}`
-      : part.state === "output-error"
-        ? `${part.toolName} failed`
-        : `Running ${part.toolName}…`;
+  const labels = TOOL_LABELS[part.toolName] ?? {
+    running: `Running ${part.toolName}…`,
+    done: `Ran ${part.toolName}`,
+    failed: `${part.toolName} failed`,
+  };
 
   if (part.state !== "output-available" && part.state !== "output-error") {
-    return <div className="tool-call">{label}</div>;
+    return (
+      <div className="tool-call running" role="status">
+        <span className="spinner" aria-hidden="true" />
+        {labels.running}
+      </div>
+    );
   }
 
+  const failed = part.state === "output-error";
   return (
-    <details className="tool-call">
-      <summary>{label}</summary>
+    <details className={`tool-call${failed ? " failed" : ""}`}>
+      <summary>
+        <span>{failed ? labels.failed : `\u2713 ${labels.done}`}</span>
+        <span className="tool-call-hint">view raw data</span>
+      </summary>
       {part.state === "output-available" ? (
         <pre>{formatToolOutput(part.output)}</pre>
       ) : (
@@ -72,9 +98,15 @@ function Part({ part }: { part: EveMessagePart }) {
 type ChatSessionProps = {
   initialEvents?: readonly MessageStreamEvent[];
   initialSession?: SessionState;
+  onClear: () => void;
 };
 
-function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
+function isClearCommand(text: string): boolean {
+  const command = text.toLowerCase();
+  return command === "clear" || command === "/clear";
+}
+
+function ChatSession({ initialEvents, initialSession, onClear }: ChatSessionProps) {
   const agent = useEveAgent({
     initialEvents,
     initialSession,
@@ -91,6 +123,7 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
   });
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const lastScrollRef = useRef(0);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
@@ -111,9 +144,23 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
 
   useEffect(() => () => clearTimeout(scrollTimerRef.current), []);
 
+  // Keep the cursor in the box: on load, and again when a report finishes.
+  useEffect(() => {
+    if (!isBusy) inputRef.current?.focus({ preventScroll: true });
+  }, [isBusy]);
+
+  const messages = agent.data.messages;
+  const lastMessage = messages[messages.length - 1];
+  const hasReplyText = lastMessage?.role === "assistant" && lastMessage.parts.some((part) => part.type === "text");
+  const showWorking = isBusy && !hasReplyText;
+
   const submit = (text: string) => {
     const trimmed = text.trim();
     if (trimmed.length === 0 || isBusy) return;
+    if (isClearCommand(trimmed)) {
+      onClear();
+      return;
+    }
     void agent.send({ message: trimmed });
     setDraft("");
   };
@@ -121,9 +168,9 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
   return (
     <>
       <div className="messages">
-        {agent.data.messages.length === 0 ? (
+        {messages.length === 0 ? (
           <div className="empty-state">
-            Ask it to audit a domain, e.g. &ldquo;audit vercel.com&rdquo;. Try:
+            Enter a domain below, or try one of these:
             <div>
               {EXAMPLES.map((domain) => (
                 <button key={domain} onClick={() => submit(`audit ${domain}`)}>
@@ -133,7 +180,7 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
             </div>
           </div>
         ) : null}
-        {agent.data.messages.map((message) => (
+        {messages.map((message) => (
           <div key={message.id} className={`message ${message.role}`}>
             {message.parts.length === 0 && message.metadata?.status === "failed" ? (
               <span className="error-text">Something went wrong sending this message.</span>
@@ -143,6 +190,12 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
             ))}
           </div>
         ))}
+        {showWorking ? (
+          <div className="working" role="status" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            Auditing your site. A full report usually takes 15 to 25 seconds.
+          </div>
+        ) : null}
         {agent.status === "error" ? (
           <div className="message assistant error-text">
             {agent.error?.message ?? "The agent hit an error. Check server logs (npx eve logs) or, in production, confirm ANTHROPIC_API_KEY is set on the Vercel project."}
@@ -158,15 +211,33 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
           }}
         >
           <input
+            ref={inputRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="audit a domain, e.g. audit vercel.com"
+            placeholder="Enter a domain, e.g. vercel.com"
+            aria-label="Domain to audit"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             disabled={isBusy}
           />
-          <button type="submit" disabled={isBusy}>
-            {isBusy ? "Auditing…" : "Send"}
+          <button type="submit" disabled={isBusy || draft.trim().length === 0}>
+            {isBusy ? "Auditing…" : "Audit"}
           </button>
         </form>
+        <p className="composer-hint">
+          Type <kbd>clear</kbd> or <kbd>/clear</kbd> to start a fresh chat. Your conversation is saved in this
+          browser.
+          {messages.length > 0 ? (
+            <>
+              {" "}
+              <button type="button" className="link-button" onClick={onClear} disabled={isBusy}>
+                Clear chat
+              </button>
+            </>
+          ) : null}
+        </p>
       </div>
     </>
   );
@@ -174,15 +245,35 @@ function ChatSession({ initialEvents, initialSession }: ChatSessionProps) {
 
 export function Chat() {
   const [saved, setSaved] = useState<SavedChat>({});
+  const [resets, setResets] = useState(0);
 
   useEffect(() => {
     setSaved(loadSavedChat());
   }, []);
 
+  const clearChat = () => {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // localStorage unavailable, the in-memory reset below still clears the view
+    }
+    setSaved({});
+    setResets((n) => n + 1);
+  };
+
   // Session config is read once when useEveAgent's store is created, so
   // ChatSession must remount (via `key`) once the saved session loads from
   // localStorage after mount, a fresh render with new props isn't enough.
-  const key = saved.session?.sessionId ?? "fresh";
+  // `resets` also forces a remount on clear, since the key alone would stay
+  // "fresh" if the conversation started before any session was saved.
+  const key = `${saved.session?.sessionId ?? "fresh"}-${resets}`;
 
-  return <ChatSession key={key} initialEvents={saved.events} initialSession={saved.session} />;
+  return (
+    <ChatSession
+      key={key}
+      initialEvents={saved.events}
+      initialSession={saved.session}
+      onClear={clearChat}
+    />
+  );
 }
